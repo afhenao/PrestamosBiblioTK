@@ -1,7 +1,9 @@
 import pool from "../config/db.js";
 import { copiarPrestamosAReportes } from "../config/esquema.js";
+import { notificar } from "../utils/notificar.js";
 import {
   actualizarVencidos,
+  avisarVencidos,
   buscarReporte,
   columnasReporte,
   comoTexto,
@@ -94,7 +96,7 @@ export async function crearPrestamo(req, res, next) {
   try {
     conexion = await pool.getConnection();
     await conexion.beginTransaction();
-    await actualizarVencidos(conexion);
+    const vencidos = await actualizarVencidos(conexion);
 
     const problema = await revisarSolicitud(conexion, req.sesion.id, materialId);
 
@@ -121,6 +123,17 @@ export async function crearPrestamo(req, res, next) {
 
     const prestamo = await buscarReporte(conexion, resultado.insertId);
     await conexion.commit();
+
+    // Solo después del commit: lo ven el bibliotecario y el lector que lo pidió
+    avisarVencidos(vencidos);
+    notificar("prestamo.creado", {
+      prestamoId: prestamo.prestamoId,
+      usuarioId: prestamo.usuarioId,
+      usuarioNombre: prestamo.usuarioNombre,
+      materialTitulo: prestamo.materialTitulo,
+      fechaDevolucionEsperada: prestamo.fechaDevolucionEsperada,
+      lugarRecogida: LUGAR_RECOGIDA,
+    });
 
     return res.status(201).json({
       message: "Préstamo registrado",
@@ -218,6 +231,13 @@ export async function registrarDevolucion(req, res, next) {
     const reporte = await buscarReporte(conexion, prestamoId);
     await conexion.commit();
 
+    notificar("prestamo.devuelto", {
+      prestamoId,
+      usuarioId: reporte.usuarioId,
+      usuarioNombre: reporte.usuarioNombre,
+      materialTitulo: reporte.materialTitulo,
+    });
+
     return res.json({ message: "Devolución registrada", prestamo: reporte });
   } catch (error) {
     await conexion?.rollback().catch(() => undefined);
@@ -249,7 +269,7 @@ async function cancelar(req, res, next, quien) {
   try {
     conexion = await pool.getConnection();
     await conexion.beginTransaction();
-    await actualizarVencidos(conexion);
+    const vencidos = await actualizarVencidos(conexion);
 
     const [[prestamo]] = await conexion.query(
       `SELECT id, usuario_id AS usuarioId, material_id AS materialId, estado
@@ -300,6 +320,16 @@ async function cancelar(req, res, next, quien) {
     await sincronizarReporte(conexion, prestamoId);
     const reporte = await buscarReporte(conexion, prestamoId);
     await conexion.commit();
+
+    avisarVencidos(vencidos);
+    notificar("prestamo.cancelado", {
+      prestamoId,
+      usuarioId: reporte.usuarioId,
+      usuarioNombre: reporte.usuarioNombre,
+      materialTitulo: reporte.materialTitulo,
+      canceladoPor: quien,
+      motivo: quien === "admin" ? motivo || null : null,
+    });
 
     return res.json({ message: "Préstamo cancelado", prestamo: reporte });
   } catch (error) {

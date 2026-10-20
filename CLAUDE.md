@@ -15,7 +15,8 @@ Parte del sistema BiblioTK (ver `../CLAUDE.md`). Registra los préstamos que pid
 - `src/config/esquema.js` — `CREATE TABLE IF NOT EXISTS reportes` al arrancar + copia a `reportes` los préstamos que no tengan fila (`copiarPrestamosAReportes`, el mismo `INSERT … SELECT` que usa el alta)
 - `src/middlewares/verificarSesion.js` — igual que en Perfil/Materiales: busca la sesión de la cookie `token_acceso` en la tabla `sesiones` (`JWT_SECRET` ya no se usa) y deja `req.sesion = { id, email, rol }`; respuestas con `Cache-Control: no-store`
 - `src/middlewares/verificarRol.js` — `verificarRol("usuario" | "admin")`, 403 con otro rol
-- `src/utils/prestamos.js` — reglas (`DIAS_PRESTAMO = 15`, `MAX_PRESTAMOS_PENDIENTES = 3`, `LUGAR_RECOGIDA`), `actualizarVencidos`, `sincronizarReporte`, `resumir`
+- `src/utils/prestamos.js` — reglas (`DIAS_PRESTAMO = 15`, `MAX_PRESTAMOS_PENDIENTES = 3`, `LUGAR_RECOGIDA`), `actualizarVencidos`, `avisarVencidos`, `sincronizarReporte`, `resumir`. `actualizarVencidos` devuelve los préstamos que acaban de vencer (los bloquea con `FOR UPDATE` para no avisar dos veces): con una conexión, quien llama avisa con `avisarVencidos` después de su commit; sin conexión, abre una transacción corta y avisa solo
+- `src/utils/notificar.js` — avisa a NotificacionesBiblioTK después del commit, sin esperar respuesta: `prestamo.creado`, `prestamo.cancelado`, `prestamo.devuelto` y `prestamo.vencido` (los ven el bibliotecario y el lector dueño). Opcionales: `NOTIFICACIONES_URL` y `NOTIFICACIONES_CLAVE`
 - `src/utils/reportePdf.js` — PDF A4 horizontal con pdfkit: encabezado, tarjetas de resumen, tabla con cabecera repetida en cada hoja y "Página X de Y"
 - `src/controllers/prestamosController.js` — `crearPrestamo`, `listarMisPrestamos`, `registrarDevolucion`
 - `src/controllers/reportesController.js` — `listarReportes`, `descargarReportePdf`

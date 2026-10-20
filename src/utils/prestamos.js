@@ -1,5 +1,6 @@
 import pool from "../config/db.js";
 import { copiarPrestamosAReportes } from "../config/esquema.js";
+import { notificar } from "./notificar.js";
 
 // Reglas del préstamo: cambiar aquí si la biblioteca decide otros valores
 export const DIAS_PRESTAMO = 15;
@@ -22,8 +23,18 @@ export function comoTexto(valor) {
     : "";
 }
 
-// VENCIDO no lo marca nadie a mano: se actualiza antes de cada lectura, en las dos tablas
-export async function actualizarVencidos(conexion = pool) {
+// VENCIDO no lo marca nadie a mano: se actualiza antes de cada lectura, en las dos tablas.
+// Devuelve los préstamos que acaban de vencer, para avisar al lector y al bibliotecario
+async function marcarVencidos(conexion) {
+  // FOR UPDATE: si dos lecturas llegan a la vez, la segunda espera y ya no los encuentra
+  // como ACTIVO, así que el aviso no sale dos veces
+  const [vencidos] = await conexion.query(
+    `SELECT p.id AS prestamoId, p.usuario_id AS usuarioId,
+            r.usuario_nombre AS usuarioNombre, r.material_titulo AS materialTitulo
+     FROM prestamos p LEFT JOIN reportes r ON r.prestamo_id = p.id
+     WHERE p.estado = 'ACTIVO' AND p.fecha_devolucion_esperada < NOW()
+     FOR UPDATE`,
+  );
   await conexion.query(
     `UPDATE prestamos SET estado = 'VENCIDO'
      WHERE estado = 'ACTIVO' AND fecha_devolucion_esperada < NOW()`,
@@ -32,6 +43,34 @@ export async function actualizarVencidos(conexion = pool) {
     `UPDATE reportes SET estado = 'VENCIDO'
      WHERE estado = 'ACTIVO' AND fecha_devolucion_esperada < NOW()`,
   );
+
+  return vencidos;
+}
+
+export function avisarVencidos(vencidos) {
+  for (const prestamo of vencidos) notificar("prestamo.vencido", prestamo);
+}
+
+// Con una conexión, quien llama está en su propia transacción y avisa después de su commit
+// (con avisarVencidos): si hace rollback, no se anuncia nada. Sin conexión, se abre una
+// transacción corta y se avisa aquí mismo
+export async function actualizarVencidos(conexion) {
+  if (conexion) return marcarVencidos(conexion);
+
+  const propia = await pool.getConnection();
+
+  try {
+    await propia.beginTransaction();
+    const vencidos = await marcarVencidos(propia);
+    await propia.commit();
+    avisarVencidos(vencidos);
+    return vencidos;
+  } catch (error) {
+    await propia.rollback().catch(() => undefined);
+    throw error;
+  } finally {
+    propia.release();
+  }
 }
 
 // Crea el reporte del préstamo si no existe y le copia su estado y fechas actuales
