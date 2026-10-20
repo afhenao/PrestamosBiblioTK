@@ -4,6 +4,7 @@ Parte del sistema BiblioTK (ver `../CLAUDE.md`). Registra los préstamos que pid
 
 - **Puerto:** 3005 (`PORT` en `.env`)
 - **Arranque:** `npm run dev` (`node --watch src/app.js`). Antes de conectar, `revisarEntorno()` (`src/config/entorno.js`) avisa si falta el archivo `.env` o alguna de `DB_USER`, `DB_NAME` (solo nombra las que faltan). Solo levanta el servidor si `testConnection()` funciona y `asegurarTablaReportes()` pudo crear/revisar la tabla `reportes`.
+- **Docker:** `Dockerfile` (node:24-alpine, solo dependencias de producción, usuario `node`, sin `.env`: la configuración llega por variables de entorno). Se orquesta desde `../InfraBiblioTK` (Compose y Kubernetes).
 - **Error `auth_gssapi_client`:** MariaDB lo responde cuando el usuario de `DB_USER` no existe o llega vacío (simula el login con el método de otra cuenta). Casi siempre es un `.env` que falta, mal nombrado o con otro usuario.
 - **Dependencias clave:** express 5, mysql2, cookie-parser, cors, dotenv y **pdfkit** (el PDF se arma en el servidor). Versiones fijas, sin `^`. `jsonwebtoken` sigue en `package.json`, pero ya no se usa.
 - **Variables (`.env`, ver `.env.example`):** `PORT=3005`, `DB_*`, `ALLOWED_ORIGIN_*` (uno por front; si no hay ninguno se aceptan 5172, 5173, 5174 y 5145) y, opcional, `LUGAR_RECOGIDA`. Lo más simple: copiar el `.env` de MaterialesBiblioTK y cambiar `PORT` a 3005.
