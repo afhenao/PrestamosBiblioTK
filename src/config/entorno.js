@@ -1,8 +1,9 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 
-// Sin estas variables el servicio no puede funcionar (DB_PASSWORD sí puede ir vacía)
-const obligatorias = ["DB_USER", "DB_NAME", "JWT_SECRET"];
+// Sin estas variables el servicio no puede funcionar (DB_PASSWORD sí puede ir vacía).
+// JWT_SECRET ya no hace falta: la sesión se valida contra la tabla sesiones de la BD
+const obligatorias = ["DB_USER", "DB_NAME"];
 
 // dotenv/config solo lee el archivo ".env" de la carpeta desde la que se arranca;
 // ".env.example" es la plantilla que se sube a git y nunca se carga.
@@ -21,7 +22,7 @@ export function revisarEntorno() {
     );
   } else {
     console.error(`Faltan variables en ${rutaEnv}: ${faltantes.join(", ")}.`);
-    console.error("Usa los mismos valores de MaterialesBiblioTK (DB_* y JWT_SECRET).");
+    console.error("Usa los mismos valores de MaterialesBiblioTK (DB_*).");
   }
 
   return false;
