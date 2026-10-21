@@ -7,7 +7,7 @@ import {
 } from "../utils/prestamos.js";
 import { generarReportePdf } from "../utils/reportePdf.js";
 
-const estadosValidos = ["ACTIVO", "VENCIDO", "DEVUELTO", "CANCELADO"];
+const estadosValidos = ["SOLICITADO", "ACTIVO", "VENCIDO", "DEVUELTO", "CANCELADO", "RECHAZADO"];
 
 // AAAA-MM-DD que además exista en el calendario (2026-02-31 no pasa)
 function esFechaValida(texto) {
@@ -16,7 +16,7 @@ function esFechaValida(texto) {
   return !Number.isNaN(fecha.getTime()) && fecha.toISOString().startsWith(texto);
 }
 
-// Filtros opcionales: ?estado=ACTIVO|VENCIDO|DEVUELTO&desde=AAAA-MM-DD&hasta=AAAA-MM-DD&buscar=texto
+// Filtros opcionales: ?estado=SOLICITADO|ACTIVO|…&desde=AAAA-MM-DD&hasta=AAAA-MM-DD&buscar=texto
 function leerFiltros(query = {}) {
   const estado = comoTexto(query.estado).toUpperCase();
   const desde = comoTexto(query.desde);

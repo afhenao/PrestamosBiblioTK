@@ -14,16 +14,26 @@ const colores = {
 };
 
 const estados = {
+  SOLICITADO: { etiqueta: "Por aprobar", color: colores.miel },
   ACTIVO: { etiqueta: "Activo", color: colores.pinoTexto },
   VENCIDO: { etiqueta: "Vencido", color: colores.arcilla },
   DEVUELTO: { etiqueta: "Devuelto", color: colores.tintaSuave },
   CANCELADO: { etiqueta: "Cancelado", color: colores.miel },
+  RECHAZADO: { etiqueta: "Rechazado", color: colores.arcilla },
 };
 
 const canceladoPor = {
   usuario: "por el usuario",
   admin: "por el bibliotecario",
 };
+
+function fueSolicitud(fila) {
+  return (
+    fila.estado === "SOLICITADO" ||
+    fila.estado === "RECHAZADO" ||
+    (fila.estado === "CANCELADO" && Boolean(fila.fechaSolicitud) && !fila.fechaRespuesta)
+  );
+}
 
 const tipos = { LIBRO: "Libro", REVISTA: "Revista", NOVELA: "Novela" };
 
@@ -92,7 +102,18 @@ const columnas = [
     ancho: 48,
     celda: (fila) => [{ texto: tipos[fila.materialTipo] ?? fila.materialTipo ?? "—" }],
   },
-  { titulo: "Prestado", ancho: 56, celda: (fila) => [{ texto: fecha(fila.fechaPrestamo) }] },
+  {
+    titulo: "Prestado",
+    ancho: 56,
+    // Nunca aprobado (esperando, rechazado o cancelado antes de aprobarse): es la fecha de la solicitud
+    celda: (fila) => [
+      { texto: fecha(fila.fechaPrestamo) },
+      fueSolicitud(fila) && {
+        texto: "solicitud",
+        suave: true,
+      },
+    ],
+  },
   {
     titulo: "Devolver antes de",
     ancho: 62,
@@ -116,6 +137,8 @@ const columnas = [
         },
       fila.estado === "CANCELADO" &&
         fila.fechaCancelacion && { texto: fecha(fila.fechaCancelacion), suave: true },
+      fila.estado === "RECHAZADO" &&
+        fila.fechaRespuesta && { texto: fecha(fila.fechaRespuesta), suave: true },
     ],
   },
   {
@@ -171,13 +194,16 @@ function dibujarEncabezado(doc, { filtros, resumen, generadoEn, izquierda, ancho
 
   const tarjetas = [
     ["Total", resumen.total, colores.tinta],
+    ["Por aprobar", resumen.solicitados, colores.miel],
     ["Activos", resumen.activos, colores.pinoTexto],
     ["Vencidos", resumen.vencidos, colores.arcilla],
     ["Devueltos", resumen.devueltos, colores.tintaSuave],
     ["Cancelados", resumen.cancelados, colores.miel],
+    ["Rechazados", resumen.rechazados, colores.arcilla],
   ];
   const arriba = doc.y + 14;
-  const anchoTarjeta = 118;
+  // Todas en una fila, repartidas en el ancho de la hoja
+  const anchoTarjeta = (anchoUtil - 10 * (tarjetas.length - 1)) / tarjetas.length;
   const altoTarjeta = 46;
 
   tarjetas.forEach(([etiqueta, valor, color], indice) => {

@@ -1,9 +1,11 @@
 import { Router } from "express";
 import {
+  aprobarPrestamo,
   cancelarMiPrestamo,
   cancelarPrestamo,
   crearPrestamo,
   listarMisPrestamos,
+  rechazarPrestamo,
   registrarDevolucion,
 } from "../controllers/prestamosController.js";
 import {
@@ -19,7 +21,8 @@ router.get("/health", (_req, res) => {
   res.status(200).json({ message: "Servicio de préstamos activo" });
 });
 
-// Lector (rol usuario): pide préstamos, consulta los suyos y cancela los que siguen activos
+// Lector (rol usuario): solicita préstamos, consulta los suyos y cancela los que siguen
+// solicitados o activos
 router.post("/Prestamos", verificarSesion, verificarRol("usuario"), crearPrestamo);
 router.get(
   "/Prestamos/mios",
@@ -34,7 +37,20 @@ router.put(
   cancelarMiPrestamo,
 );
 
-// Bibliotecario (rol admin): tabla de préstamos, devoluciones, cancelaciones y reporte en PDF
+// Bibliotecario (rol admin): aprueba o rechaza solicitudes, registra devoluciones y
+// cancelaciones, y descarga el reporte en PDF
+router.put(
+  "/Prestamos/:id/aprobacion",
+  verificarSesion,
+  verificarRol("admin"),
+  aprobarPrestamo,
+);
+router.put(
+  "/Prestamos/:id/rechazo",
+  verificarSesion,
+  verificarRol("admin"),
+  rechazarPrestamo,
+);
 router.put(
   "/Prestamos/:id/devolucion",
   verificarSesion,

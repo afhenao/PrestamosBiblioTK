@@ -1,6 +1,9 @@
 import pool from "./db.js";
 
-const estadosPrestamo = "ENUM('ACTIVO','DEVUELTO','VENCIDO','CANCELADO')";
+// SOLICITADO: el lector lo pidió y espera que un bibliotecario lo apruebe (pasa a ACTIVO) o lo
+// rechace (RECHAZADO). Solo un préstamo aprobado se puede recoger
+const estadosPrestamo =
+  "ENUM('SOLICITADO','ACTIVO','DEVUELTO','VENCIDO','CANCELADO','RECHAZADO')";
 
 // reportes guarda, por cada préstamo, una copia de los datos del usuario y del material.
 // Es la fuente de la tabla de préstamos y del PDF del bibliotecario, y no pierde historial:
@@ -19,6 +22,8 @@ const crearTablaReportes = `
     material_autor VARCHAR(100) NULL,
     material_tipo VARCHAR(20) NULL,
     material_isbn VARCHAR(20) NULL,
+    fecha_solicitud DATETIME NULL,
+    fecha_respuesta DATETIME NULL,
     fecha_prestamo DATETIME NULL,
     fecha_devolucion_esperada DATETIME NULL,
     fecha_devolucion_real DATETIME NULL,
@@ -40,11 +45,11 @@ export const copiarPrestamosAReportes = `
   INSERT INTO reportes
     (prestamo_id, usuario_id, usuario_nombre, usuario_email, usuario_cc, usuario_celular,
      material_id, material_titulo, material_autor, material_tipo, material_isbn,
-     fecha_prestamo, fecha_devolucion_esperada, fecha_devolucion_real, fecha_cancelacion,
+     fecha_solicitud, fecha_respuesta, fecha_prestamo, fecha_devolucion_esperada, fecha_devolucion_real, fecha_cancelacion,
      cancelado_por, estado, observaciones)
   SELECT p.id, u.id, CONCAT_WS(' ', u.nombres, u.apellidos), u.email, u.cc, u.celular,
          m.id, m.titulo, m.autor, m.tipo_material, m.isbn,
-         p.fecha_prestamo, p.fecha_devolucion_esperada, p.fecha_devolucion_real,
+         p.fecha_solicitud, p.fecha_respuesta, p.fecha_prestamo, p.fecha_devolucion_esperada, p.fecha_devolucion_real,
          p.fecha_cancelacion, p.cancelado_por, p.estado, p.observaciones
   FROM prestamos p
   JOIN usuarios u ON u.id = p.usuario_id
@@ -52,14 +57,17 @@ export const copiarPrestamosAReportes = `
   LEFT JOIN reportes r ON r.prestamo_id = p.id
   WHERE r.id IS NULL`;
 
-// Cancelar un préstamo necesita el estado CANCELADO y saber cuándo y quién lo canceló
-// ("usuario" o "admin"). Las BD creadas antes no lo tienen: se agrega solo, una vez
-const columnasCancelacion = [
+// Cancelar necesita saber cuándo y quién canceló ("usuario" o "admin"); la aprobación, cuándo
+// se pidió (fecha_solicitud) y cuándo respondió el bibliotecario (fecha_respuesta). Las BD
+// creadas antes no tienen esas columnas ni los estados nuevos: se agregan solos, una vez
+const columnasNuevas = [
+  { nombre: "fecha_solicitud", definicion: "DATETIME NULL DEFAULT NULL AFTER material_id" },
+  { nombre: "fecha_respuesta", definicion: "DATETIME NULL DEFAULT NULL AFTER fecha_solicitud" },
   { nombre: "fecha_cancelacion", definicion: "DATETIME NULL DEFAULT NULL AFTER fecha_devolucion_real" },
   { nombre: "cancelado_por", definicion: "VARCHAR(20) NULL DEFAULT NULL AFTER fecha_cancelacion" },
 ];
 
-async function asegurarCancelacion(tabla) {
+async function asegurarColumnas(tabla) {
   const [columnas] = await pool.query(
     `SELECT COLUMN_NAME AS nombre, COLUMN_TYPE AS tipo FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
@@ -67,14 +75,14 @@ async function asegurarCancelacion(tabla) {
   );
   const tipos = new Map(columnas.map((columna) => [columna.nombre, columna.tipo]));
 
-  if (!String(tipos.get("estado")).includes("'CANCELADO'")) {
+  if (!String(tipos.get("estado")).includes("'SOLICITADO'")) {
     await pool.query(
       `ALTER TABLE ${tabla} MODIFY estado ${estadosPrestamo} NOT NULL DEFAULT 'ACTIVO'`,
     );
-    console.log(`${tabla}.estado ahora acepta CANCELADO`);
+    console.log(`${tabla}.estado ahora acepta SOLICITADO y RECHAZADO`);
   }
 
-  for (const columna of columnasCancelacion) {
+  for (const columna of columnasNuevas) {
     if (!tipos.has(columna.nombre)) {
       await pool.query(`ALTER TABLE ${tabla} ADD COLUMN ${columna.nombre} ${columna.definicion}`);
       console.log(`Columna ${tabla}.${columna.nombre} agregada`);
@@ -85,8 +93,8 @@ async function asegurarCancelacion(tabla) {
 export async function asegurarTablaReportes() {
   try {
     await pool.query(crearTablaReportes);
-    await asegurarCancelacion("prestamos");
-    await asegurarCancelacion("reportes");
+    await asegurarColumnas("prestamos");
+    await asegurarColumnas("reportes");
     const [resultado] = await pool.query(copiarPrestamosAReportes);
 
     if (resultado.affectedRows > 0) {
